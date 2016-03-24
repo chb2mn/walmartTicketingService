@@ -1,0 +1,73 @@
+import junit.framework.TestCase;
+import org.junit.Test;
+import org.junit.rules.ExpectedException;
+import java.util.Optional;
+import java.util.UUID;
+
+public class HoldTicketTest extends TestCase{
+    protected myTicketService TS;
+    protected int orc = 5;
+    protected int main = 10;
+    protected int balc1 = 15;
+    protected int balc2 = 20;
+    protected int total;
+
+    protected void setUp(){
+        TS = new myTicketService(orc, main, balc1, balc2);
+        total = orc+main+balc1+balc2;
+    }
+    public void testHoldAny(){
+        int holdSize = 3;
+        SeatHold mySeats = TS.findAndHoldSeats(holdSize, Optional.empty(), Optional.empty(), "chb2mn");
+        assertEquals(TS.numSeatsAvailable(Optional.empty()), total-holdSize);
+        assertEquals(TS.numSeatsAvailable(Optional.of(1)), orc-holdSize);
+        assertEquals(mySeats.heldSeats.size(), holdSize);
+        for (Seat s : mySeats.heldSeats){
+            assertEquals(myTicketService.Status.held, TS.getStatus(s.section, s.number));
+        }
+    }
+    public void testHoldWithMin(){
+        int holdSize = 3;
+        SeatHold mySeats = TS.findAndHoldSeats(holdSize, Optional.of(2), Optional.empty(), "chb2mn");
+        assertEquals(TS.numSeatsAvailable(Optional.empty()), total-holdSize);
+        assertEquals(TS.numSeatsAvailable(Optional.of(2)), main-holdSize);
+        assertEquals(TS.numSeatsAvailable(Optional.of(1)), orc);
+        assertEquals(mySeats.heldSeats.size(), holdSize);
+    }
+    public void testHoldWithMax(){
+        int holdSize = 3;
+        SeatHold mySeats = TS.findAndHoldSeats(holdSize, Optional.of(3), Optional.of(4), "chb2mn");
+        assertEquals(TS.numSeatsAvailable(Optional.empty()), total-holdSize);
+        assertEquals(TS.numSeatsAvailable(Optional.of(3)), balc1-holdSize);
+        assertEquals(TS.numSeatsAvailable(Optional.of(1)), orc);
+        assertEquals(mySeats.heldSeats.size(), holdSize);
+    }
+    public void testHoldMany(){
+        int holdSize = 11;
+        SeatHold mySeats = TS.findAndHoldSeats(holdSize, Optional.empty(), Optional.empty(), "chb2mn");
+        assertEquals(TS.numSeatsAvailable(Optional.empty()), total-holdSize);
+        assertEquals(TS.numSeatsAvailable(Optional.of(1)), orc);
+        assertEquals(TS.numSeatsAvailable(Optional.of(3)), balc1-holdSize);
+        assertEquals(mySeats.heldSeats.size(), holdSize);
+    }
+    public void testHoldTooMany(){
+        int holdSize = 21;
+        try {
+            TS.findAndHoldSeats(holdSize, Optional.empty(), Optional.empty(), "chb2mn");
+            fail("should have failed with Index OoB exception");
+        } catch (IndexOutOfBoundsException e){
+            assertEquals(e.getMessage(), "No consecutive seats of that size");
+        }
+    }
+    public void testHoldAlreadyFull(){
+        int holdSize = 3;
+        TS.findAndHoldSeats(holdSize, Optional.empty(), Optional.empty(), "chb2mn");
+        try {
+            TS.findAndHoldSeats(holdSize, Optional.empty(), Optional.of(1), "chb2mn");
+            fail("should have failed with Index OoB exception");
+        } catch (IndexOutOfBoundsException e){
+            assertEquals(e.getMessage(), "No consecutive seats of that size");
+        }
+    }
+
+}
