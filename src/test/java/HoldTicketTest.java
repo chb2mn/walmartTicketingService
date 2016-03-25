@@ -23,7 +23,7 @@ public class HoldTicketTest extends TestCase{
         assertEquals(TS.numSeatsAvailable(Optional.of(1)), orc-holdSize);
         assertEquals(mySeats.heldSeats.size(), holdSize);
         for (Seat s : mySeats.heldSeats){
-            assertEquals(myTicketService.Status.held, TS.getStatus(s.section, s.number));
+            assertEquals(Seat.Status.held, TS.getStatus(s.getSection(), s.getNumber()));
         }
     }
     public void testHoldWithMin(){
@@ -32,7 +32,7 @@ public class HoldTicketTest extends TestCase{
         assertEquals(TS.numSeatsAvailable(Optional.empty()), total-holdSize);
         assertEquals(TS.numSeatsAvailable(Optional.of(2)), main-holdSize);
         assertEquals(TS.numSeatsAvailable(Optional.of(1)), orc);
-        assertEquals(mySeats.heldSeats.size(), holdSize);
+        assertEquals(holdSize, mySeats.heldSeats.size());
     }
     public void testHoldWithMax(){
         int holdSize = 3;
@@ -68,6 +68,29 @@ public class HoldTicketTest extends TestCase{
         } catch (IndexOutOfBoundsException e){
             assertEquals(e.getMessage(), "No consecutive seats of that size");
         }
+    }
+    //This handles the test cases in which a timeout occurs
+    public void testHoldTimeout(){
+        int holdSize = 3;
+        SeatHold timedSeats = TS.findAndHoldSeats(holdSize, Optional.empty(), Optional.empty(), "chb2mn");
+        try {
+            Thread.sleep(6000); //Sleep for too long
+        } catch (InterruptedException e){
+            fail("interrupt occurred");
+        }
+        //The seats should now be open
+        for(Seat s : timedSeats.heldSeats){
+            assertEquals(Seat.Status.open, s.getState());
+            assertEquals(Seat.Status.open, TS.getStatus(s.getSection(), s.getNumber()));
+        }
+        //And reserving should fail
+        try{
+            TS.reserveSeats(timedSeats.id, "chb2mn");
+            fail("should have failed with NullPointerException");
+        } catch(NullPointerException e){
+            assertEquals(e.getMessage(), "Held Reservation Expired");
+        }
+
     }
 
 }

@@ -2,6 +2,9 @@ import junit.framework.TestCase;
 
 import java.util.Optional;
 
+/**
+ * This tests the reservation
+ */
 public class ReserveTicketTest extends TestCase {
     protected myTicketService TS;
     protected int orc = 5;
@@ -22,7 +25,7 @@ public class ReserveTicketTest extends TestCase {
         SeatHold confirmedSeats = TS.confirmResv(confirmation);
         assertEquals(mySeats.id, confirmedSeats.id);
         for (Seat s : confirmedSeats.heldSeats){
-            assertEquals(TS.getStatus(s.section, s.number), myTicketService.Status.reserved);
+            assertEquals(TS.getStatus(s.getSection(), s.getNumber()), Seat.Status.reserved);
         }
     }
 }

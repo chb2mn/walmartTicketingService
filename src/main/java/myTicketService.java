@@ -1,51 +1,69 @@
 
 import java.util.*;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeoutException;
 
+/**
+ * myTicketService is an implementation of the TicketService Interface
+ *
+ */
 public class myTicketService implements TicketService {
-    public enum Status{
-        open, held, reserved
-    }
-    private Semaphore allSeatsLock;
 
-    private ArrayList<ArrayList<Status>> allSeats;
+    private Semaphore allSeatsLock;     //A lock to use when writing to allSeats
 
-    private HashMap<Integer, SeatHold> HoldStorage = new HashMap<>();
-    private HashMap<String, SeatHold> ResvStorage = new HashMap<>();
+    private ArrayList<ArrayList<Seat>> allSeats;  //A list of all the sections and the status of the seats thereof
 
+    private HashMap<Integer, SeatHold> HoldStorage = new HashMap<>();   //An in-memory map to keep track of held seats
+    private HashMap<String, SeatHold> ResvStorage = new HashMap<>();    //An in-memory map to keep track of reserved seats
+
+    /**
+     * Constructor
+     * all Params are the number of seats in each section. This could be abstracted, but that is beyond the scope
+     *
+     * @param orchestra
+     * @param main
+     * @param balcony1
+     * @param balcony2
+     */
     public myTicketService(int orchestra, int main, int balcony1, int balcony2){
         allSeats = new ArrayList<>(4);
         allSeatsLock = new Semaphore(1);
-        allSeats.add(init_seating(orchestra));
-        allSeats.add(init_seating(main));
-        allSeats.add(init_seating(balcony1));
-        allSeats.add(init_seating(balcony2));
+        allSeats.add(init_seating(1, orchestra));
+        allSeats.add(init_seating(2, main));
+        allSeats.add(init_seating(3, balcony1));
+        allSeats.add(init_seating(4, balcony2));
 
     }
 
-    private ArrayList<Status> init_seating(int num_seats){
-        ArrayList<Status> area = new ArrayList<>(num_seats);
+    /**
+     * Initializes a seating area and returns it
+     * @param num_seats
+     * @return
+     */
+    private ArrayList<Seat> init_seating(int section_, int num_seats){
+        ArrayList<Seat> area = new ArrayList<>(num_seats);
         for (int i = 0; i < num_seats; i++){
-            area.add(Status.open);
+            area.add(new Seat(section_, i, Optional.of(5000)));
         }
         return area;
     }
 
+    // Decent visual representation of the state of the place
     public String toString(){
         String retString = "";
-        for (ArrayList<Status> area : allSeats) {
-            for (Status chair : area){
-                if (chair == Status.open) {
+        for (ArrayList<Seat> area : allSeats) {
+            for (Seat chair : area){
+                if (chair.getState() == Seat.Status.open) {
                     retString += "[O]";
                 }
-                else if (chair == Status.held) {
+                else if (chair.getState() == Seat.Status.held) {
                     retString += "[/]";
                 }
-                else if (chair == Status.reserved) {
+                else if (chair.getState() == Seat.Status.reserved) {
                     retString += "[x]";
                 }
                 else {
-                    retString += "[E]";
+                    retString += "[E]"; //Show an error
                 }
             }
             retString += "\n";
@@ -62,16 +80,16 @@ public class myTicketService implements TicketService {
         try{
             int level = venueLevel.get();
             int total = 0;
-            for (Status seatState : allSeats.get(level-1)){
-                if (seatState.equals(Status.open)) total++;
+            for (Seat seat : allSeats.get(level-1)){
+                if (seat.getState().equals(Seat.Status.open)) total++;
             }
             return total;
         }
         catch (NoSuchElementException ex){
             int total = 0;
-            for (ArrayList<Status> area : allSeats){
-                for (Status seatState : area){
-                    if (seatState.equals(Status.open)) total++;
+            for (ArrayList<Seat> area : allSeats){
+                for (Seat seat : area){
+                    if (seat.getState().equals(Seat.Status.open)) total++;
                 }
             }
             return total;
@@ -96,22 +114,24 @@ public class myTicketService implements TicketService {
             System.out.println("An interrupted Exception occurred when trying to hold seats");
             return null;
         }
-        //FindSeats
         FoundSeats seatInfo = FindSeats(numSeats, minLevel, maxLevel);
         if (seatInfo == null){
             throw new IndexOutOfBoundsException("No consecutive seats of that size");
         }
         ArrayList<Seat> heldSeats = new ArrayList<>(numSeats);
         for (int i = 0; i < numSeats; i++){
-            allSeats.get(seatInfo.section).set(seatInfo.startIndex+i, Status.held);
-            heldSeats.add(new Seat(seatInfo.section, seatInfo.startIndex+i));
+            allSeats.get(seatInfo.section).get(seatInfo.startIndex+i).holdSeat();
+            heldSeats.add(allSeats.get(seatInfo.section).get(seatInfo.startIndex+i));
         }
         allSeatsLock.release();
         SeatHold myHold = new SeatHold(heldSeats, customerEmail);
         HoldStorage.put(myHold.id, myHold);
         return myHold;
     }
-
+    /*
+      Class exclusively used to return the location of the found seats in FindSeats()
+      NOTE: Could probably change this to returning a list of seats or something
+     */
     private class FoundSeats{
         public int section;
         public int startIndex;
@@ -121,6 +141,16 @@ public class myTicketService implements TicketService {
         }
     }
 
+    /**
+     * FindSeats() returns the location and section of the first available seats of the given size.
+     * Seats are given preference to find the nearest available section
+     * If no space is available given the constraints (minLevel, maxLevel) then null is returned.
+     * NOTE: Should probably change this to a custom Error at some point
+     * @param numSeats Number of consecutive seats to find
+     * @param minLevel Minimum Level acceptable by user (1 = orchestra, so min=2 means Main level or higher) (1 indexing because reasons)
+     * @param maxLevel Maximum Level acceptable by user (4 = balcony2, so max=3 means balc1 or lower)
+     * @return FoundSeats with section and starting index or null
+     */
     private FoundSeats FindSeats(int numSeats, Optional<Integer> minLevel, Optional<Integer> maxLevel){
         int level;
         try {
@@ -135,10 +165,10 @@ public class myTicketService implements TicketService {
             max = 4;
         }
         for (; level < max; level++){
-            ArrayList area = allSeats.get(level-1);
+            ArrayList<Seat> area = allSeats.get(level-1);
             int tmpLength = 0;
             for (int i = 0; i < area.size(); i++){
-                if (area.get(i) == Status.open){
+                if (area.get(i).getState() == Seat.Status.open){
                     tmpLength++;
                     if (tmpLength == numSeats){
                         //Need to return i-tmpLength+1 to get to beginning
@@ -150,7 +180,11 @@ public class myTicketService implements TicketService {
         return null;
     }
 
-
+    /**
+     * Unused but useful feature to remove a hold
+     * @param seatHoldId
+     * @return true if completed successfully
+     */
     public boolean removeHold(int seatHoldId){
         try{
             allSeatsLock.acquire();
@@ -160,7 +194,7 @@ public class myTicketService implements TicketService {
         }
         SeatHold seatsToRemove = HoldStorage.remove(seatHoldId);
         for (Seat s : seatsToRemove.heldSeats){
-            allSeats.get(s.section).set(s.number, Status.open);
+            allSeats.get(s.getSection()).get(s.getNumber()).freeSeat();
         }
         allSeatsLock.release();
         return true;
@@ -183,7 +217,12 @@ public class myTicketService implements TicketService {
         SeatHold seatsToRemove = HoldStorage.remove(seatHoldId);
 
         for (Seat s : seatsToRemove.heldSeats) {
-            allSeats.get(s.section).set(s.number, Status.reserved);
+            if (s.getState() == Seat.Status.held) {
+                allSeats.get(s.getSection()-1).get(s.getNumber()).reserveSeat();
+            }
+            else{
+                throw(new NullPointerException("Held Reservation Expired"));
+            }
         }
         String resvID = UUID.randomUUID().toString();
         ResvStorage.put(resvID, seatsToRemove);
@@ -192,11 +231,22 @@ public class myTicketService implements TicketService {
         return resvID;
     }
 
+    /**
+     * returns the SeatHold object given a confirmation ID to confirm a reservation
+     * @param confirmationID
+     * @return
+     */
     public SeatHold confirmResv(String confirmationID){
         return ResvStorage.get(confirmationID);
     }
 
-    public Status getStatus(int section, int seat){
-        return allSeats.get(section).get(seat);
+    /**
+     * Get the status of a given section and seat
+     * @param section
+     * @param seat
+     * @return
+     */
+    public Seat.Status getStatus(int section, int seat){
+        return allSeats.get(section-1).get(seat).getState();
     }
 }
