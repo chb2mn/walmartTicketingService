@@ -3,7 +3,7 @@ import junit.framework.TestCase;
 import java.util.Optional;
 
 /**
- * This tests the reservation
+ * This tests the reservation service. Most of these tests are
  */
 public class ReserveTicketTest extends TestCase {
     protected myTicketService TS;
@@ -26,6 +26,13 @@ public class ReserveTicketTest extends TestCase {
         assertEquals(mySeats.id, confirmedSeats.id);
         for (Seat s : confirmedSeats.heldSeats){
             assertEquals(TS.getStatus(s.getSection(), s.getNumber()), Seat.Status.reserved);
+        }
+    }
+    public void testBadReserve(){
+        try{
+            TS.reserveSeats(12345, "chb2mn");
+        } catch (NullPointerException e){
+            assertEquals("No seats found... Bad ID?", e.getMessage());
         }
     }
 }

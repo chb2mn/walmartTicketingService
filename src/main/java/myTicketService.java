@@ -215,6 +215,9 @@ public class myTicketService implements TicketService {
             return null;
         }
         SeatHold seatsToRemove = HoldStorage.remove(seatHoldId);
+        if (seatsToRemove == null) {
+            throw(new NullPointerException("No seats found... Bad ID?"));
+        }
 
         for (Seat s : seatsToRemove.heldSeats) {
             if (s.getState() == Seat.Status.held) {
